@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rocket Trip: Explore the Solar System</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0e24;--ink:#eef3ff;--dim:#9aa6d6;--mint:#6ff2c8;--sun:#ffcf5c;--rose:#ff8fb1;--panel:#151b3f;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:'Nunito',system-ui,sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);padding:10px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;pointer-events:none}
+.meter{display:flex;align-items:center;gap:8px;font-size:15px}
+.bar{width:110px;height:10px;border-radius:6px;background:#ffffff22;overflow:hidden}
+.bar i{display:block;height:100%;width:100%;background:var(--mint);transition:width .2s}
+#hp{letter-spacing:3px;color:var(--rose);font-size:18px}
+#track{display:flex;gap:6px;margin-left:auto}
+#track span{width:26px;height:26px;border-radius:50%;border:2px solid #ffffff44;font-size:11px;display:grid;place-items:center;color:var(--dim)}
+#track span.on{background:var(--sun);border-color:var(--sun);color:#2a2000}
+#lang{pointer-events:auto;font-size:14px;padding:6px 12px;margin:0 0 0 4px;border-radius:10px;background:#ffffff22;color:var(--ink)}
+.overlay{position:fixed;inset:0;display:none;place-items:center;background:#05081acc;padding:18px}
+.overlay.show{display:grid}
+.card{background:var(--panel);border:2px solid #ffffff22;border-radius:22px;padding:26px;max-width:460px;width:100%;box-shadow:0 20px 60px #0008}
+h1,h2{margin:0 0 8px;font-weight:600;line-height:1.1}
+h1{font-size:40px}h2{font-size:32px}
+p{margin:0 0 12px;line-height:1.5;color:#d6defa;font-size:17px;max-width:60ch}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.chip{background:#ffffff14;border-radius:12px;padding:6px 12px;font-size:14px;color:var(--dim)}
+.chip b{color:var(--ink);font-weight:600}
+button{font:inherit;font-weight:600;font-size:18px;background:var(--sun);color:#2a2000;border:0;border-radius:14px;padding:12px 26px;cursor:pointer;margin-top:6px}
+button:hover{filter:brightness(1.08)}
+button:focus-visible{outline:3px solid var(--mint);outline-offset:3px}
+.keys{font-size:15px;color:var(--dim)}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--panel);border:2px solid #ffffff22;padding:8px 16px;border-radius:14px;opacity:0;transition:opacity .3s;pointer-events:none;font-size:16px;text-align:center}
+#toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div class="meter"><span data-i="fuel"></span> <div class="bar"><i id="fuel"></i></div></div>
+  <div class="meter"><span data-i="shield"></span> <span id="hp"></span></div>
+  <div id="track"></div><button id="lang" aria-label="Language / Язык">RU</button>
+</div>
+<div id="toast"></div>
+
+<div class="overlay show" id="start"><div class="card">
+  <h1 data-i="title"></h1>
+  <p data-i="intro"></p>
+  <p class="keys" data-i="keys"></p>
+  <button id="go" data-i="launch"></button>
+</div></div>
+
+<div class="overlay" id="info"><div class="card">
+  <h2 id="iname"></h2>
+  <div class="chips" id="ichips"></div>
+  <p id="ifact1"></p><p id="ifact2"></p>
+  <button id="cont">Keep flying</button>
+</div></div>
+
+<div class="overlay" id="end"><div class="card">
+  <h2 id="etitle"></h2>
+  <p id="etext"></p>
+  <button id="again" data-i="again"></button>
+</div></div>
+
+<script>
+const P=[
+{n:'Mercury',x:1300,y:420,r:34,c:['#c9c2b8','#6f6a63'],d:'58 million km',t:'59 Earth days',f1:'Mercury is the smallest planet and the closest to the Sun.',f2:'It swings from about 430°C in daylight to −180°C at night, because it has almost no air to hold heat.'},
+{n:'Venus',x:2500,y:800,r:58,c:['#ffd9a0','#c98a3e'],d:'108 million km',t:'243 Earth days',f1:'Venus is the hottest planet, around 465°C, hot enough to melt lead.',f2:'It spins backwards, and one day on Venus is longer than its whole year.'},
+{n:'Earth',x:3750,y:500,r:62,c:['#7fd0ff','#1f5fbf'],d:'150 million km',t:'24 hours',f1:'Earth is the only place we know of with life. About 71% of its surface is water.',f2:'Its Moon is slowly drifting away, about 3.8 cm every year.'},
+{n:'Mars',x:5000,y:850,r:46,c:['#ff9a6b','#9c3f22'],d:'228 million km',t:'24.6 hours',f1:'Mars looks red because its dust is full of rusty iron.',f2:'It has Olympus Mons, the tallest volcano known in the solar system, about 22 km high.'},
+{n:'Jupiter',x:6500,y:520,r:130,c:['#f0d2a8','#b5763f'],d:'778 million km',t:'10 hours',f1:'Jupiter is the biggest planet. More than 1,000 Earths would fit inside it.',f2:'Its Great Red Spot is a storm wider than Earth that has raged for centuries.'},
+{n:'Saturn',x:8100,y:780,r:105,c:['#f6e3a9','#c19a4f'],d:'1.4 billion km',t:'10.7 hours',ring:1,f1:'Saturn’s rings are made mostly of chunks of ice, from tiny grains to house-sized blocks.',f2:'It is so light for its size that it would float if you could find a bathtub big enough.'},
+{n:'Uranus',x:9500,y:450,r:72,c:['#bff4f2','#4fb3b8'],d:'2.9 billion km',t:'17 hours',f1:'Uranus is tipped over, so it rolls around the Sun almost on its side.',f2:'It has the coldest atmosphere of any planet, about −224°C.'},
+{n:'Neptune',x:10800,y:760,r:70,c:['#7fa6ff','#2640b8'],d:'4.5 billion km',t:'16 hours',f1:'Neptune has the fastest winds in the solar system, over 2,000 km/h.',f2:'One year on Neptune lasts 165 Earth years.'}
+];
+const WORLD_H=1300, START={x:420,y:650};
+const $=id=>document.getElementById(id), cv=$('c'), g=cv.getContext('2d');
+let W,H,dpr;
+function size(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;g.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',size);size();
+
+const RU=[
+{n:'Меркурий',d:'58 млн км',t:'59 земных суток',f1:'Меркурий — самая маленькая планета и ближайшая к Солнцу.',f2:'Днём там около 430 °C, а ночью −180 °C: воздуха почти нет, и тепло не удерживается.'},
+{n:'Венера',d:'108 млн км',t:'243 земных суток',f1:'Венера — самая горячая планета, около 465 °C. Этого хватит, чтобы расплавить свинец.',f2:'Она вращается в обратную сторону, а один её день длиннее целого года.'},
+{n:'Земля',d:'150 млн км',t:'24 часа',f1:'Земля — единственное известное нам место, где есть жизнь. Около 71% её поверхности покрыто водой.',f2:'Луна медленно удаляется от нас — примерно на 3,8 см в год.'},
+{n:'Марс',d:'228 млн км',t:'24,6 часа',f1:'Марс красный, потому что его пыль полна ржавого железа.',f2:'Здесь находится Олимп — самый высокий известный вулкан Солнечной системы, около 22 км.'},
+{n:'Юпитер',d:'778 млн км',t:'10 часов',f1:'Юпитер — самая большая планета. Внутри него поместилось бы больше 1000 Земель.',f2:'Большое Красное Пятно — это шторм шире Земли, который бушует веками.'},
+{n:'Сатурн',d:'1,4 млрд км',t:'10,7 часа',f1:'Кольца Сатурна состоят в основном из льда — от крошечных крупинок до глыб размером с дом.',f2:'Он такой лёгкий для своего размера, что плавал бы в воде, найдись ванна побольше.'},
+{n:'Уран',d:'2,9 млрд км',t:'17 часов',f1:'Уран «лежит на боку», поэтому катится вокруг Солнца почти как шар.',f2:'У него самая холодная атмосфера среди планет — около −224 °C.'},
+{n:'Нептун',d:'4,5 млрд км',t:'16 часов',f1:'На Нептуне самые быстрые ветры в Солнечной системе — больше 2000 км/ч.',f2:'Один год на Нептуне длится 165 земных лет.'}
+];
+const T={en:{fuel:'Fuel',shield:'Shield',title:'Rocket Trip',intro:'Fly from the Sun to Neptune. Visit every planet to learn its secrets, grab green fuel crystals, and dodge the asteroids.',keys:'Move: arrow keys or WASD. Boost: hold Space. On a phone or with a mouse, press and hold where you want to go.',launch:'Launch',again:'Fly again',from:'From the Sun',day:'One day',keep:'Keep flying',fin:'Finish the trip',endT:'Mission complete!',endX:'You visited all eight planets, from scorching Mercury to windy Neptune. The whole trip is about 4.5 billion km, and the Voyager 2 spacecraft needed 12 years to fly to Neptune.',head:'Head right to find Mercury',nofuel:'Out of fuel! Back to the last stop.',noshield:'Shield gone! Back to the last stop.',ouch:'Ouch! Asteroid hit',plus:'+ fuel'},
+ru:{fuel:'Топливо',shield:'Щит',title:'Космический полёт',intro:'Лети от Солнца до Нептуна. Побывай на всех планетах, узнай их секреты, собирай зелёные кристаллы топлива и уворачивайся от астероидов.',keys:'Управление: стрелки или WASD. Ускорение — пробел. На телефоне или мышкой: нажми и держи там, куда хочешь лететь.',launch:'Старт',again:'Играть снова',from:'От Солнца',day:'Сутки',keep:'Лети дальше',fin:'Завершить полёт',endT:'Миссия выполнена!',endX:'Ты побывал на всех восьми планетах — от раскалённого Меркурия до ветреного Нептуна. Весь путь — около 4,5 млрд км, а космическому аппарату «Вояджер-2» понадобилось 12 лет, чтобы долететь до Нептуна.',head:'Лети вправо — там Меркурий',nofuel:'Топливо кончилось! Возвращаемся к последней планете.',noshield:'Щит разрушен! Возвращаемся к последней планете.',ouch:'Ой! Астероид',plus:'+ топливо'}};
+let lang=(()=>{try{const v=localStorage.getItem('lang');if(v)return v}catch(e){}return (navigator.language||'').toLowerCase().startsWith('ru')?'ru':'en'})();
+const tr=k=>T[lang][k];
+const pn=i=>lang==='ru'?RU[i].n:P[i].n;
+let curInfo=-1;
+function renderInfo(i){
+  const p=lang==='ru'?RU[i]:P[i];
+  $('iname').textContent=p.n;
+  $('ichips').innerHTML=`<span class="chip">${tr('from')} <b>${p.d}</b></span><span class="chip">${tr('day')} <b>${p.t}</b></span>`;
+  $('ifact1').textContent=p.f1;$('ifact2').textContent=p.f2;
+  $('cont').textContent=visited.size===P.length?tr('fin'):tr('keep');
+}
+function applyLang(){
+  document.documentElement.lang=lang;document.title=tr('title');
+  document.querySelectorAll('[data-i]').forEach(e=>e.textContent=tr(e.dataset.i));
+  $('lang').textContent=lang==='ru'?'EN':'RU';
+  [...$('track').children].forEach((s,i)=>{s.textContent=pn(i)[0];s.title=pn(i)});
+  if(curInfo>=0)renderInfo(curInfo);
+  if($('end').classList.contains('show')){$('etitle').textContent=tr('endT');$('etext').textContent=tr('endX')}
+}
+$('lang').onclick=()=>{lang=lang==='ru'?'en':'ru';try{localStorage.setItem('lang',lang)}catch(e){}applyLang();$('lang').blur()};
+
+// seeded random for a stable level
+let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+const stars=[...Array(260)].map(()=>({x:rnd()*3000,y:rnd()*2000,z:.1+rnd()*.5,s:rnd()*1.6+.4}));
+let rocks=[],gems=[];
+function build(){
+  rocks=[];gems=[];
+  const xs=[0,...P.map(p=>p.x)];
+  for(let i=0;i<xs.length-1;i++){
+    const a=xs[i]+250,b=xs[i+1]-250;
+    for(let k=0;k<9;k++){
+      const pts=[],n=8,r=18+rnd()*26;
+      for(let j=0;j<n;j++)pts.push(r*(.75+rnd()*.35));
+      rocks.push({x:a+rnd()*(b-a),y:120+rnd()*(WORLD_H-240),r,pts,rot:rnd()*6,vr:(rnd()-.5)*.8,vx:(rnd()-.5)*30,vy:(rnd()-.5)*30});
+    }
+    for(let k=0;k<5;k++)gems.push({x:a+rnd()*(b-a),y:120+rnd()*(WORLD_H-240),on:true});
+  }
+}
+build();
+
+let ship,fuel,hp,inv,paused=true,visited=new Set(),last=null,boost=false,t=0;
+function reset(full){
+  ship={x:last?last.x-last.r-120:START.x,y:last?last.y:START.y,vx:0,vy:0,a:0};
+  fuel=100;hp=3;inv=1.5;
+  if(full){visited=new Set();last=null;ship.x=START.x;ship.y=START.y;gems.forEach(q=>q.on=true)}
+  hud();
+}
+function hud(){
+  $('fuel').style.width=Math.max(0,fuel)+'%';
+  $('hp').textContent='♥'.repeat(Math.max(hp,0))+'♡'.repeat(Math.max(3-hp,0));
+  [...$('track').children].forEach((s,i)=>s.classList.toggle('on',visited.has(i)));
+}
+P.forEach((p,i)=>{const s=document.createElement('span');s.textContent=p.n[0];s.title=p.n;$('track').appendChild(s)});
+let toastT;function toast(m){const e=$('toast');e.textContent=m;e.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('on'),2200)}
+
+// input
+const keys={};let ptr=null;
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key===' ')e.preventDefault()});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+cv.addEventListener('pointerdown',e=>{ptr={x:e.clientX,y:e.clientY}});
+cv.addEventListener('pointermove',e=>{if(ptr)ptr={x:e.clientX,y:e.clientY}});
+addEventListener('pointerup',()=>ptr=null);
+addEventListener('blur',()=>{ptr=null});
+
+$('go').onclick=()=>{$('start').classList.remove('show');reset(true);paused=false;toast(tr('head'))};
+$('cont').onclick=()=>{$('info').classList.remove('show');curInfo=-1;paused=false;
+  if(visited.size===P.length)finish();};
+$('again').onclick=()=>{$('end').classList.remove('show');reset(true);paused=false};
+function finish(){
+  paused=true;$('etitle').textContent=tr('endT');
+  $('etext').textContent=tr('endX');
+  $('end').classList.add('show');
+}
+function showInfo(i){
+  paused=true;curInfo=i;renderInfo(i);
+  $('info').classList.add('show');$('cont').focus();
+}
+
+function update(dt){
+  t+=dt;
+  let dx=0,dy=0;
+  if(keys['arrowleft']||keys['a'])dx--;if(keys['arrowright']||keys['d'])dx++;
+  if(keys['arrowup']||keys['w'])dy--;if(keys['arrowdown']||keys['s'])dy++;
+  boost=!!keys[' '];
+  if(ptr){const sx=ship.x-cam.x,sy=ship.y-cam.y,ex=ptr.x-sx,ey=ptr.y-sy,d=Math.hypot(ex,ey);if(d>24){dx=ex/d;dy=ey/d}}
+  const m=Math.hypot(dx,dy),moving=m>0&&fuel>0;
+  if(m>1){dx/=m;dy/=m}
+  const sp=moving?(boost?560:320):0;
+  ship.vx+=(dx*sp-ship.vx)*Math.min(1,dt*3);
+  ship.vy+=(dy*sp-ship.vy)*Math.min(1,dt*3);
+  if(moving)fuel-=dt*(boost?5:1.4);
+  if(fuel<=0&&Math.hypot(ship.vx,ship.vy)<12){toast(tr('nofuel'));reset(false);return}
+  ship.x=Math.max(60,Math.min(P[7].x+600,ship.x+ship.vx*dt));
+  ship.y=Math.max(40,Math.min(WORLD_H-40,ship.y+ship.vy*dt));
+  if(Math.hypot(ship.vx,ship.vy)>20){const ta=Math.atan2(ship.vy,ship.vx);let da=ta-ship.a;da=Math.atan2(Math.sin(da),Math.cos(da));ship.a+=da*Math.min(1,dt*8)}
+  inv=Math.max(0,inv-dt);
+  // planets
+  P.forEach((p,i)=>{
+    if(Math.hypot(ship.x-p.x,ship.y-p.y)<p.r+80){
+      if(!visited.has(i)){visited.add(i);last=p;fuel=100;hud();showInfo(i)}
+    }
+  });
+  // gems
+  gems.forEach(q=>{if(q.on&&Math.hypot(ship.x-q.x,ship.y-q.y)<34){q.on=false;fuel=Math.min(100,fuel+25);toast(tr('plus'))}});
+  // rocks
+  rocks.forEach(r=>{
+    r.x+=r.vx*dt;r.y+=r.vy*dt;r.rot+=r.vr*dt;
+    if(r.y<60||r.y>WORLD_H-60)r.vy*=-1;
+    if(inv<=0&&Math.hypot(ship.x-r.x,ship.y-r.y)<r.r+12){
+      hp--;inv=1.6;
+      const a=Math.atan2(ship.y-r.y,ship.x-r.x);ship.vx=Math.cos(a)*500;ship.vy=Math.sin(a)*500;
+      if(hp<=0){toast(tr('noshield'));reset(false);return}
+      toast(tr('ouch'));
+    }
+  });
+  hud();
+}
+
+const cam={x:0,y:0};
+function draw(){
+  cam.x=ship.x-W/2;cam.y=Math.max(0,Math.min(WORLD_H-H,ship.y-H/2));if(WORLD_H<H)cam.y=-(H-WORLD_H)/2;
+  g.fillStyle='#0a0e24';g.fillRect(0,0,W,H);
+  const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#0a0e24');gr.addColorStop(1,'#1a1240');g.fillStyle=gr;g.fillRect(0,0,W,H);
+  stars.forEach(s=>{
+    const x=((s.x-cam.x*s.z)%3000+3000)%3000%(W+50),y=((s.y-cam.y*s.z)%2000+2000)%2000%(H+50);
+    g.globalAlpha=.4+s.z;g.fillStyle='#fff';g.fillRect(x,y,s.s,s.s)});
+  g.globalAlpha=1;
+  g.save();g.translate(-cam.x,-cam.y);
+  // sun
+  const sg=g.createRadialGradient(-120,650,40,-120,650,520);sg.addColorStop(0,'#fff3b0');sg.addColorStop(.25,'#ffcf5c');sg.addColorStop(.6,'#ff9a3c55');sg.addColorStop(1,'#ff9a3c00');
+  g.fillStyle=sg;g.beginPath();g.arc(-120,650,520,0,7);g.fill();
+  // gems
+  gems.forEach(q=>{if(!q.on)return;g.save();g.translate(q.x,q.y+Math.sin(t*3+q.x)*4);g.rotate(Math.PI/4);
+    g.shadowColor='#6ff2c8';g.shadowBlur=16;g.fillStyle='#6ff2c8';g.fillRect(-9,-9,18,18);g.restore()});
+  // planets
+  P.forEach((p,i)=>{
+    if(p.ring){g.strokeStyle='#e8d29a';g.lineWidth=12;g.globalAlpha=.55;g.beginPath();g.ellipse(p.x,p.y,p.r*1.9,p.r*.5,-.3,Math.PI,2*Math.PI);g.stroke();g.globalAlpha=1}
+    const pg=g.createRadialGradient(p.x-p.r*.4,p.y-p.r*.4,p.r*.1,p.x,p.y,p.r);pg.addColorStop(0,p.c[0]);pg.addColorStop(1,p.c[1]);
+    g.fillStyle=pg;g.beginPath();g.arc(p.x,p.y,p.r,0,7);g.fill();
+    if(p.n==='Jupiter'||p.n==='Saturn'){g.strokeStyle='#ffffff30';g.lineWidth=6;[-.45,-.1,.3].forEach(k=>{g.beginPath();g.ellipse(p.x,p.y+k*p.r,p.r*Math.sqrt(1-k*k)*.98,2,0,0,7);g.stroke()})}
+    if(p.ring){g.strokeStyle='#e8d29a';g.lineWidth=12;g.globalAlpha=.8;g.beginPath();g.ellipse(p.x,p.y,p.r*1.9,p.r*.5,-.3,0,Math.PI);g.stroke();g.globalAlpha=1}
+    g.fillStyle=visited.has(i)?'#ffcf5c':'#eef3ff';g.font='600 20px Nunito,system-ui,sans-serif';g.textAlign='center';
+    g.fillText((visited.has(i)?'✓ ':'')+pn(i),p.x,p.y+p.r*(p.ring?.9:1)+34);
+    if(visited.has(i)){g.strokeStyle='#ffcf5c55';g.setLineDash([6,8]);g.lineWidth=2;g.beginPath();g.arc(p.x,p.y,p.r+80,0,7);g.stroke();g.setLineDash([])}
+  });
+  // rocks
+  rocks.forEach(r=>{g.save();g.translate(r.x,r.y);g.rotate(r.rot);g.fillStyle='#7d7a96';g.strokeStyle='#b4b1cf';g.lineWidth=2;g.beginPath();
+    r.pts.forEach((v,j)=>{const a=j/r.pts.length*6.283;g[j?'lineTo':'moveTo'](Math.cos(a)*v,Math.sin(a)*v)});g.closePath();g.fill();g.stroke();g.restore()});
+  // rocket
+  if(!(inv>0&&Math.floor(t*12)%2)){
+    g.save();g.translate(ship.x,ship.y);g.rotate(ship.a);
+    const sp=Math.hypot(ship.vx,ship.vy);
+    if(sp>20){const fl=10+Math.min(sp/12,22)+Math.random()*8;g.fillStyle='#ffcf5c';g.beginPath();g.moveTo(-16,-6);g.lineTo(-16-fl,0);g.lineTo(-16,6);g.fill();g.fillStyle='#ff8fb1';g.beginPath();g.moveTo(-16,-3);g.lineTo(-16-fl*.55,0);g.lineTo(-16,3);g.fill()}
+    g.fillStyle='#eef3ff';g.beginPath();g.moveTo(26,0);g.quadraticCurveTo(10,-14,-16,-10);g.lineTo(-16,10);g.quadraticCurveTo(10,14,26,0);g.fill();
+    g.fillStyle='#ff8fb1';g.beginPath();g.moveTo(-4,-9);g.lineTo(-18,-20);g.lineTo(-16,-8);g.fill();g.beginPath();g.moveTo(-4,9);g.lineTo(-18,20);g.lineTo(-16,8);g.fill();
+    g.fillStyle='#6ff2c8';g.beginPath();g.arc(6,0,5,0,7);g.fill();
+    g.restore();
+  }
+  g.restore();
+  // arrow to next planet
+  const ni=P.findIndex((p,i)=>!visited.has(i));
+  if(ni>=0&&!paused){
+    const p=P[ni],sx=p.x-cam.x,sy=p.y-cam.y;
+    if(sx<-p.r||sx>W+p.r||sy<-p.r||sy>H+p.r){
+      const a=Math.atan2(p.y-ship.y,p.x-ship.x),R=Math.min(W,H)*.32;
+      g.save();g.translate(W/2+Math.cos(a)*R,H/2+Math.sin(a)*R);g.rotate(a);g.fillStyle='#ffcf5c';
+      g.beginPath();g.moveTo(16,0);g.lineTo(-8,-11);g.lineTo(-8,11);g.fill();g.restore();
+      g.fillStyle='#ffcf5c';g.font='600 14px Nunito,system-ui,sans-serif';g.textAlign='center';
+      g.fillText(pn(ni),W/2+Math.cos(a)*(R+34),H/2+Math.sin(a)*(R+34)+5);
+    }
+  }
+}
+let prev=performance.now();
+function loop(n){const dt=Math.min((n-prev)/1000,.05);prev=n;if(!paused)update(dt);draw();requestAnimationFrame(loop)}
+applyLang();reset(true);requestAnimationFrame(loop);
+</script>
+</body>
+</html>
