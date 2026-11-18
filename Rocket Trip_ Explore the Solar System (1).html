@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rocket Trip: Explore the Solar System</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0a0e24;--ink:#eef3ff;--dim:#9aa6d6;--mint:#6ff2c8;--sun:#ffcf5c;--rose:#ff8fb1;--panel:#151b3f;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:'Nunito',system-ui,sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+#hud{position:fixed;left:0;right:0;top:env(safe-area-inset-top,0px);padding:10px 14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;pointer-events:none}
+.meter{display:flex;align-items:center;gap:8px;font-size:15px}
+.bar{width:110px;height:10px;border-radius:6px;background:#ffffff22;overflow:hidden}
+.bar i{display:block;height:100%;width:100%;background:var(--mint);transition:width .2s}
+#hp{letter-spacing:3px;color:var(--rose);font-size:18px}
+#track{display:flex;gap:6px;margin-left:auto}
+#track span{width:26px;height:26px;border-radius:50%;border:2px solid #ffffff44;font-size:11px;display:grid;place-items:center;color:var(--dim)}
+#track span.on{background:var(--sun);border-color:var(--sun);color:#2a2000}
+#lang{pointer-events:auto;font-size:14px;padding:6px 12px;margin:0 0 0 4px;border-radius:10px;background:#ffffff22;color:var(--ink)}
+#foe{position:fixed;left:50%;transform:translateX(-50%);top:calc(58px + env(safe-area-inset-top,0px));display:none;text-align:center;pointer-events:none;font-size:16px}
+#foe .bar{margin:4px auto 0;width:220px}
+.overlay{position:fixed;inset:0;display:none;place-items:center;background:#05081acc;padding:18px}
+.overlay.show{display:grid}
+.card{background:var(--panel);border:2px solid #ffffff22;border-radius:22px;padding:26px;max-width:460px;width:100%;box-shadow:0 20px 60px #0008}
+h1,h2{margin:0 0 8px;font-weight:600;line-height:1.1}
+h1{font-size:40px}h2{font-size:32px}
+p{margin:0 0 12px;line-height:1.5;color:#d6defa;font-size:17px;max-width:60ch}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+.chip{background:#ffffff14;border-radius:12px;padding:6px 12px;font-size:14px;color:var(--dim)}
+.chip b{color:var(--ink);font-weight:600}
+button{font:inherit;font-weight:600;font-size:18px;background:var(--sun);color:#2a2000;border:0;border-radius:14px;padding:12px 26px;cursor:pointer;margin-top:6px}
+button:hover{filter:brightness(1.08)}
+button:focus-visible{outline:3px solid var(--mint);outline-offset:3px}
+.keys{font-size:15px;color:var(--dim)}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--panel);border:2px solid #ffffff22;padding:8px 16px;border-radius:14px;opacity:0;transition:opacity .3s;pointer-events:none;font-size:16px;text-align:center}
+#toast.on{opacity:1}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <div class="meter"><span data-i="fuel"></span> <div class="bar"><i id="fuel"></i></div></div>
+  <div class="meter"><span data-i="shield"></span> <span id="hp"></span></div>
+  <div id="track"></div><button id="lang" aria-label="Language / Язык">RU</button>
+</div>
+<div id="foe"><b id="fname"></b> <span id="fstars" style="color:var(--rose)"></span><div class="bar"><i id="fhp" style="background:var(--rose)"></i></div></div>
+<div id="toast"></div>
+<div class="overlay" id="alert"><div class="card"><h2 id="aname"></h2><div class="chips" id="achips"></div><p id="adesc"></p><button id="fightBtn" data-i="fight"></button></div></div>
+<div class="overlay" id="bad"><div class="card" style="text-align:center"><div id="bemoji" style="font-size:72px;line-height:1.1"></div><h2 id="bt"></h2><p id="bx"></p><button id="retry" data-i="retry"></button></div></div>
+
+<div class="overlay show" id="start"><div class="card">
+  <h1 data-i="title"></h1>
+  <p data-i="intro"></p>
+  <p class="keys" data-i="keys"></p>
+  <button id="go" data-i="launch"></button>
+</div></div>
+
+<div class="overlay" id="info"><div class="card">
+  <h2 id="iname"></h2>
+  <div class="chips" id="ichips"></div>
+  <p id="ifact1"></p><p id="ifact2"></p>
+  <button id="cont">Keep flying</button>
+</div></div>
+
+<div class="overlay" id="end"><div class="card">
+  <h2 id="etitle"></h2>
+  <p id="etext"></p>
+  <button id="next" data-i="next" style="margin-right:8px"></button><button id="again" data-i="again"></button>
+</div></div>
+
+<script>
+const P0=[
+{n:'Mercury',x:1300,y:420,r:34,c:['#c9c2b8','#6f6a63'],d:'58 million km',t:'59 Earth days',f1:'Mercury is the smallest planet and the closest to the Sun.',f2:'It swings from about 430°C in daylight to −180°C at night, because it has almost no air to hold heat.'},
+{n:'Venus',x:2500,y:800,r:58,c:['#ffd9a0','#c98a3e'],d:'108 million km',t:'243 Earth days',f1:'Venus is the hottest planet, around 465°C, hot enough to melt lead.',f2:'It spins backwards, and one day on Venus is longer than its whole year.'},
+{n:'Earth',x:3750,y:500,r:62,c:['#7fd0ff','#1f5fbf'],d:'150 million km',t:'24 hours',f1:'Earth is the only place we know of with life. About 71% of its surface is water.',f2:'Its Moon is slowly drifting away, about 3.8 cm every year.'},
+{n:'Mars',x:5000,y:850,r:46,c:['#ff9a6b','#9c3f22'],d:'228 million km',t:'24.6 hours',f1:'Mars looks red because its dust is full of rusty iron.',f2:'It has Olympus Mons, the tallest volcano known in the solar system, about 22 km high.'},
+{n:'Jupiter',x:6500,y:520,r:130,c:['#f0d2a8','#b5763f'],d:'778 million km',t:'10 hours',f1:'Jupiter is the biggest planet. More than 1,000 Earths would fit inside it.',f2:'Its Great Red Spot is a storm wider than Earth that has raged for centuries.'},
+{n:'Saturn',x:8100,y:780,r:105,c:['#f6e3a9','#c19a4f'],d:'1.4 billion km',t:'10.7 hours',ring:1,f1:'Saturn’s rings are made mostly of chunks of ice, from tiny grains to house-sized blocks.',f2:'It is so light for its size that it would float if you could find a bathtub big enough.'},
+{n:'Uranus',x:9500,y:450,r:72,c:['#bff4f2','#4fb3b8'],d:'2.9 billion km',t:'17 hours',f1:'Uranus is tipped over, so it rolls around the Sun almost on its side.',f2:'It has the coldest atmosphere of any planet, about −224°C.'},
+{n:'Neptune',x:10800,y:760,r:70,c:['#7fa6ff','#2640b8'],d:'4.5 billion km',t:'16 hours',f1:'Neptune has the fastest winds in the solar system, over 2,000 km/h.',f2:'One year on Neptune lasts 165 Earth years.'}
+];
+const WORLD_H=1300, START={x:420,y:650};
+const $=id=>document.getElementById(id), cv=$('c'), g=cv.getContext('2d');
+let W,H,dpr;
+function size(){dpr=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*dpr;cv.height=H*dpr;g.setTransform(dpr,0,0,dpr,0,0)}
+addEventListener('resize',size);size();
+
+const RU0=[
+{n:'Меркурий',d:'58 млн км',t:'59 земных суток',f1:'Меркурий — самая маленькая планета и ближайшая к Солнцу.',f2:'Днём там около 430 °C, а ночью −180 °C: воздуха почти нет, и тепло не удерживается.'},
+{n:'Венера',d:'108 млн км',t:'243 земных суток',f1:'Венера — самая горячая планета, около 465 °C. Этого хватит, чтобы расплавить свинец.',f2:'Она вращается в обратную сторону, а один её день длиннее целого года.'},
+{n:'Земля',d:'150 млн км',t:'24 часа',f1:'Земля — единственное известное нам место, где есть жизнь. Около 71% её поверхности покрыто водой.',f2:'Луна медленно удаляется от нас — примерно на 3,8 см в год.'},
+{n:'Марс',d:'228 млн км',t:'24,6 часа',f1:'Марс красный, потому что его пыль полна ржавого железа.',f2:'Здесь находится Олимп — самый высокий известный вулкан Солнечной системы, около 22 км.'},
+{n:'Юпитер',d:'778 млн км',t:'10 часов',f1:'Юпитер — самая большая планета. Внутри него поместилось бы больше 1000 Земель.',f2:'Большое Красное Пятно — это шторм шире Земли, который бушует веками.'},
+{n:'Сатурн',d:'1,4 млрд км',t:'10,7 часа',f1:'Кольца Сатурна состоят в основном из льда — от крошечных крупинок до глыб размером с дом.',f2:'Он такой лёгкий для своего размера, что плавал бы в воде, найдись ванна побольше.'},
+{n:'Уран',d:'2,9 млрд км',t:'17 часов',f1:'Уран «лежит на боку», поэтому катится вокруг Солнца почти как шар.',f2:'У него самая холодная атмосфера среди планет — около −224 °C.'},
+{n:'Нептун',d:'4,5 млрд км',t:'16 часов',f1:'На Нептуне самые быстрые ветры в Солнечной системе — больше 2000 км/ч.',f2:'Один год на Нептуне длится 165 земных лет.'}
+];
+const P1=[
+{n:'Emberon',x:1300,y:700,r:48,c:['#ffb36b','#b3261e'],d:'31 million km',t:'6 hours',f1:'Emberon is a world of rivers of molten rock. Its sky glows orange all day.',f2:'Every few hours it rains tiny glowing sparks that cool into black glass.'},
+{n:'Glimmora',x:2600,y:420,r:62,c:['#a8ffb0','#1f8a5a'],d:'95 million km',t:'20 hours',f1:'Glimmora’s jungles light up at night, because every plant glows like a firefly.',f2:'From space, the whole planet looks like a giant green lantern.'},
+{n:'Crystallia',x:3900,y:850,r:56,c:['#e6f6ff','#8f7bff'],d:'160 million km',t:'30 hours',f1:'Crystallia is covered in towers of crystal that hum when the wind blows through them.',f2:'Its night sky is full of rainbows, because light bends inside the crystals.'},
+{n:'Zephyra',x:5300,y:520,r:120,c:['#ffd1f0','#7a5cff'],rc:'#ff9fdc',ring:1,d:'420 million km',t:'9 hours',f1:'Zephyra is a gas giant with floating islands that drift through its clouds.',f2:'Its pink rings are made of sparkling dust that never stops spinning.'},
+{n:'Tidalis',x:6800,y:800,r:70,c:['#7fffe9','#0d5a8f'],d:'900 million km',t:'40 hours',f1:'Tidalis is an ocean world with three moons, and their pull lifts waves taller than mountains.',f2:'Its giant sea creatures sing songs that can be heard across the whole planet.'},
+{n:'Nox',x:8200,y:480,r:80,c:['#7a6fb0','#1a1440'],rc:'#cfd8ff',ring:1,d:'3 billion km',t:'100 hours',f1:'Nox is a dark planet far from its star, and it is almost invisible.',f2:'The only way to find it is by the glow of its silver rings.'}
+];
+const RU1=[
+{n:'Эмберон',d:'31 млн км',t:'6 часов',f1:'Эмберон — мир рек из расплавленной породы. Его небо весь день светится оранжевым.',f2:'Каждые несколько часов там идёт дождь из крошечных светящихся искр, которые застывают чёрным стеклом.'},
+{n:'Глиммора',d:'95 млн км',t:'20 часов',f1:'Джунгли Глимморы ночью светятся, ведь каждое растение сияет, как светлячок.',f2:'Из космоса вся планета выглядит как огромный зелёный фонарь.'},
+{n:'Кристаллия',d:'160 млн км',t:'30 часов',f1:'Кристаллия покрыта башнями из кристаллов, которые гудят, когда в них дует ветер.',f2:'Ночное небо там полно радуг, потому что свет преломляется в кристаллах.'},
+{n:'Зефира',d:'420 млн км',t:'9 часов',f1:'Зефира — газовый гигант, в облаках которого плавают летающие острова.',f2:'Её розовые кольца состоят из сверкающей пыли, которая никогда не перестаёт кружиться.'},
+{n:'Тидалис',d:'900 млн км',t:'40 часов',f1:'Тидалис — океанский мир с тремя лунами, и их притяжение поднимает волны выше гор.',f2:'Гигантские морские существа поют песни, которые слышно по всей планете.'},
+{n:'Нокс',d:'3 млрд км',t:'100 часов',f1:'Нокс — тёмная планета далеко от своей звезды, её почти не видно.',f2:'Найти её можно только по сиянию серебряных колец.'}
+];
+const SYS=[
+{P:P0,RU:RU0,sun:['#fff3b0','#ffcf5c','#ff9a3c55','#ff9a3c00'],bg:'#1a1240'},
+{P:P1,RU:RU1,sun:['#f4ffff','#9fe8ff','#7a5cff66','#7a5cff00'],bg:'#0e2a3d'}
+];
+let P=P0,RU=RU0,sysIdx=0;
+const T={en:{fuel:'Fuel',alert:'Alien alert!',threat:'Threat level',fight:'Fight!',badT:'Bad ending',retry:'Try again',foeWin:'Alien driven off! Fuel refilled',hit:'Hit!',hint:'Dodge the shots. Your ship fires by itself.',shield:'Shield',title:'Rocket Trip',intro:'Fly from the Sun to Neptune. Visit every planet to learn its secrets, grab green fuel crystals, and dodge the asteroids.',keys:'Move: arrow keys or WASD. Boost: hold Space. On a phone or with a mouse, press and hold where you want to go.',launch:'Launch',again:'Fly again',from:'From the Sun',day:'One day',keep:'Keep flying',fin:'Finish the trip',endT:'Mission complete!',endX:'You visited all eight planets, from scorching Mercury to windy Neptune. The whole trip is about 4.5 billion km, and the Voyager 2 spacecraft needed 12 years to fly to Neptune. Ready for something stranger? Beyond Neptune lies a made-up star system full of planets that only exist in imagination.',endT2:'Aurelia system explored!',endX2:'You visited every planet of the made-up Aurelia system, from fiery Emberon to dark Nox. These worlds only exist in imagination, but who knows what we will find in real space one day?',next:'Fly to a new star system',head2:'Welcome to the made-up Aurelia system! Head right.',fake:'Made-up planet',from2:'From its star',head:'Head right to find Mercury',nofuel:'Out of fuel! Back to the last stop.',noshield:'Shield gone! Back to the last stop.',ouch:'Ouch! Asteroid hit',plus:'+ fuel'},
+ru:{fuel:'Топливо',alert:'Тревога! Пришелец!',threat:'Уровень угрозы',fight:'В бой!',badT:'Плохая концовка',retry:'Ещё раз',foeWin:'Пришелец прогнан! Топливо пополнено',hit:'Попадание!',hint:'Уворачивайся от выстрелов. Корабль стреляет сам.',shield:'Щит',title:'Космический полёт',intro:'Лети от Солнца до Нептуна. Побывай на всех планетах, узнай их секреты, собирай зелёные кристаллы топлива и уворачивайся от астероидов.',keys:'Управление: стрелки или WASD. Ускорение — пробел. На телефоне или мышкой: нажми и держи там, куда хочешь лететь.',launch:'Старт',again:'Играть снова',from:'От Солнца',day:'Сутки',keep:'Лети дальше',fin:'Завершить полёт',endT:'Миссия выполнена!',endX:'Ты побывал на всех восьми планетах — от раскалённого Меркурия до ветреного Нептуна. Весь путь — около 4,5 млрд км, а космическому аппарату «Вояджер-2» понадобилось 12 лет, чтобы долететь до Нептуна. Хочешь ещё? За Нептуном есть выдуманная звёздная система, полная планет, которые существуют только в воображении.',endT2:'Система Аурелия исследована!',endX2:'Ты побывал на всех планетах выдуманной системы Аурелия — от огненного Эмберона до тёмного Нокса. Эти миры существуют только в воображении, но кто знает, что мы найдём в настоящем космосе?',next:'Лететь в новую звёздную систему',head2:'Добро пожаловать в выдуманную систему Аурелия! Лети вправо.',fake:'Выдуманная планета',from2:'От своей звезды',head:'Лети вправо — там Меркурий',nofuel:'Топливо кончилось! Возвращаемся к последней планете.',noshield:'Щит разрушен! Возвращаемся к последней планете.',ouch:'Ой! Астероид',plus:'+ топливо'}};
+let lang=(()=>{try{const v=localStorage.getItem('lang');if(v)return v}catch(e){}return (navigator.language||'').toLowerCase().startsWith('ru')?'ru':'en'})();
+const tr=k=>T[lang][k];
+const pn=i=>lang==='ru'?RU[i].n:P[i].n;
+let curInfo=-1;
+function renderInfo(i){
+  const p=lang==='ru'?RU[i]:P[i];
+  $('iname').textContent=p.n;
+  $('ichips').innerHTML=`<span class="chip">${tr(sysIdx?'from2':'from')} <b>${p.d}</b></span><span class="chip">${tr('day')} <b>${p.t}</b></span>${sysIdx?`<span class="chip">${tr('fake')}</span>`:''}`;
+  $('ifact1').textContent=p.f1;$('ifact2').textContent=p.f2;
+  $('cont').textContent=visited.size===P.length?tr('fin'):tr('keep');
+}
+function applyLang(){
+  document.documentElement.lang=lang;document.title=tr('title');
+  document.querySelectorAll('[data-i]').forEach(e=>e.textContent=tr(e.dataset.i));
+  $('lang').textContent=lang==='ru'?'EN':'RU';
+  [...$('track').children].forEach((s,i)=>{s.textContent=pn(i)[0];s.title=pn(i)});
+  if(curInfo>=0)renderInfo(curInfo);if(curAlert)renderAlert();if(curBad)renderBad();if(battle)$('fname').textContent=battle.al[lang].n;
+  if($('end').classList.contains('show'))finish();
+}
+$('lang').onclick=()=>{lang=lang==='ru'?'en':'ru';try{localStorage.setItem('lang',lang)}catch(e){}applyLang();$('lang').blur()};
+
+const AL=[
+{l:1,hp:12,r:34,sp:1.2,fi:1.8,bs:190,spr:1,e:'🛸',col:['#8dff9a','#2fa05a'],
+ en:{n:'Glorp Scouts',d:'Tiny saucer scouts from a very curious world. They poke everything they find.',b:'The Glorp Scouts adopt your rocket as a pet. You spend the rest of your days being fed space cookies.'},
+ ru:{n:'Глорп-разведчики',d:'Крошечные разведчики на тарелках с очень любопытной планеты. Они тыкают во всё, что найдут.',b:'Глорпы забирают вашу ракету себе как питомца. До конца жизни вас кормят космическим печеньем.'}},
+{l:2,hp:20,r:42,sp:1.6,fi:1.4,bs:230,spr:1,e:'👾',col:['#c9a0ff','#6a3fb5'],
+ en:{n:'Trigrin Gremlins',d:'Three-eyed gremlins that love chewing engine wires.',b:'The gremlins chew through every wire. Your rocket drifts forever while they play loud music.'},
+ ru:{n:'Тригрины',d:'Трёхглазые проказники, которые обожают грызть провода двигателя.',b:'Тригрины перегрызли все провода. Ракета дрейфует вечно, а они включают громкую музыку.'}},
+{l:3,hp:32,r:50,sp:2,fi:1.1,bs:270,spr:1,e:'🐜',col:['#6f9a68','#1f2f20'],
+ en:{n:'Hive Stalker',d:'A fast, acid-spitting hunter from a giant insect hive.',b:'The Hive carries your rocket home as a snack, and the queen throws a party.'},
+ ru:{n:'Охотник Улья',d:'Быстрый охотник с ядовитой слюной из гигантского улья насекомых.',b:'Улей уносит вашу ракету домой на перекус, а королева устраивает праздник.'}},
+{l:4,hp:46,r:58,sp:2.4,fi:.95,bs:310,spr:2,e:'🎯',col:['#a9b0b8','#4d535c'],
+ en:{n:'Mask Hunter',d:'A trophy hunter in a glowing mask. It wants your rocket for its wall.',b:'Your rocket becomes a trophy on a hunter’s wall, right between a comet and a meteor.'},
+ ru:{n:'Охотник в маске',d:'Охотник за трофеями в светящейся маске. Ему нужна ваша ракета для коллекции.',b:'Ваша ракета теперь трофей на стене охотника, между кометой и метеоритом.'}},
+{l:5,hp:70,r:78,sp:1.8,fi:.85,bs:240,spr:3,e:'👁',col:['#ffc3c9','#c2436b'],
+ en:{n:'The Sculptor',d:'An ancient, shapeless mass of living flesh that reshapes everything it touches. The most dangerous being in the galaxy.',bm:'The Sculptor reshapes you into a monkey… with human skin. You can still fly the rocket, but now you mostly want bananas.',bb:'The Sculptor squishes you into a banana. A very scared banana, floating in space.'},
+ ru:{n:'Скульптор',d:'Древняя бесформенная масса живой плоти, которая переделывает всё, к чему прикоснётся. Самое опасное существо в галактике.',bm:'Скульптор переделал вас в обезьяну… с человеческой кожей. Ракетой управлять вы ещё можете, но теперь хочется в основном бананов.',bb:'Скульптор превратил вас в банан. Очень испуганный банан, плывущий в космосе.'}}
+];
+let battle=null,pending=null,alienT=40,curAlert=null,curBad=null;
+const stars5=l=>'★'.repeat(l)+'☆'.repeat(5-l);
+function pickAlien(){
+  const w=[4,3,2.2,1.8,visited.size>=3?1.3:0];let r=Math.random()*w.reduce((a,b)=>a+b);
+  for(let i=0;i<5;i++){r-=w[i];if(r<=0)return AL[i]}return AL[0]}
+function renderAlert(){const a=curAlert;
+  $('aname').textContent=a[lang].n;
+  $('achips').innerHTML=`<span class="chip" style="color:var(--rose)">⚠ ${tr('alert')}</span><span class="chip">${tr('threat')} <b>${stars5(a.l)}</b></span>`;
+  $('adesc').textContent=a[lang].d}
+function startAlert(){curAlert=pickAlien();paused=true;renderAlert();$('alert').classList.add('show');$('fightBtn').focus()}
+function startBattle(a){
+  battle={al:a,hp:a.hp,max:a.hp,cx:cam.x,cy:cam.y,x:0,y:0,t:0,fire:0,efire:1.2,pb:[],eb:[],flash:0};
+  ship.vx=ship.vy=0;inv=1;
+  $('foe').style.display='block';$('fname').textContent=a[lang].n;$('fstars').textContent=stars5(a.l);$('fhp').style.width='100%';
+  toast(tr('hint'))}
+function readInput(){let dx=0,dy=0;
+  if(keys['arrowleft']||keys['a'])dx--;if(keys['arrowright']||keys['d'])dx++;
+  if(keys['arrowup']||keys['w'])dy--;if(keys['arrowdown']||keys['s'])dy++;
+  if(ptr){const ex=ptr.x-(ship.x-cam.x),ey=ptr.y-(ship.y-cam.y),d=Math.hypot(ex,ey);if(d>24){dx=ex/d;dy=ey/d}}
+  const m=Math.hypot(dx,dy);if(m>1){dx/=m;dy/=m}return{dx,dy}}
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function updateBattle(dt){
+  const b=battle,a=b.al;b.t+=dt;
+  const {dx,dy}=readInput();
+  ship.vx+=(dx*300-ship.vx)*Math.min(1,dt*5);ship.vy+=(dy*300-ship.vy)*Math.min(1,dt*5);
+  ship.x=clamp(ship.x+ship.vx*dt,b.cx+40,b.cx+W*.55);ship.y=clamp(ship.y+ship.vy*dt,b.cy+40,b.cy+H-40);
+  let da=-ship.a;da=Math.atan2(Math.sin(da),Math.cos(da));ship.a+=da*Math.min(1,dt*6);
+  inv=Math.max(0,inv-dt);
+  b.x=b.cx+W*.8+(a.l===5?Math.cos(b.t*1.1)*50:0);b.y=b.cy+H/2+Math.sin(b.t*a.sp)*H*.3;
+  b.fire-=dt;if(b.fire<=0){b.fire=.24;b.pb.push({x:ship.x+30,y:ship.y})}
+  b.pb.forEach(p=>p.x+=720*dt);
+  b.pb=b.pb.filter(p=>{if(Math.hypot(p.x-b.x,p.y-b.y)<a.r+6){b.hp--;b.flash=.1;return false}return p.x<b.cx+W+40});
+  b.flash=Math.max(0,b.flash-dt);
+  b.efire-=dt;if(b.efire<=0){b.efire=a.fi;const base=Math.atan2(ship.y-b.y,ship.x-b.x);
+    for(let k=0;k<a.spr;k++){const an=base+(k-(a.spr-1)/2)*.3;b.eb.push({x:b.x,y:b.y,vx:Math.cos(an)*a.bs,vy:Math.sin(an)*a.bs})}}
+  b.eb=b.eb.filter(e=>{e.x+=e.vx*dt;e.y+=e.vy*dt;
+    if(inv<=0&&Math.hypot(e.x-ship.x,e.y-ship.y)<20){hp--;inv=1.3;toast(tr('hit'));return false}
+    return e.x>b.cx-40&&e.x<b.cx+W+40&&e.y>b.cy-40&&e.y<b.cy+H+40});
+  $('fhp').style.width=Math.max(0,b.hp/b.max*100)+'%';
+  hud();
+  if(hp<=0){loseBattle();return}
+  if(b.hp<=0)winBattle();
+}
+function winBattle(){fuel=100;hp=Math.min(3,hp+1);inv=1.5;battle=null;$('foe').style.display='none';alienT=30+Math.random()*30;toast(tr('foeWin'));hud()}
+function loseBattle(){const a=battle.al;battle=null;paused=true;$('foe').style.display='none';
+  curBad={al:a,kind:a.l===5?(Math.random()<.5?'bm':'bb'):'b'};renderBad();$('bad').classList.add('show');$('retry').focus()}
+function renderBad(){const a=curBad.al,k=curBad.kind;
+  $('bemoji').textContent=k==='bm'?'🐒':k==='bb'?'🍌':a.e;
+  $('bt').textContent=tr('badT');$('bx').textContent=a[lang][k]}
+function drawAlien(a,x,y,t,fl){
+  g.save();g.translate(x,y);const r=a.r,c0=fl?'#fff':a.col[0],c1=fl?'#fff':a.col[1];
+  if(a.l===1){
+    g.fillStyle=c1;g.beginPath();g.ellipse(0,8,r,r*.35,0,0,7);g.fill();
+    g.fillStyle=c0;g.beginPath();g.arc(0,2,r*.55,Math.PI,0);g.fill();
+    g.fillStyle='#10202a';g.beginPath();g.arc(-7,-8,4,0,7);g.arc(8,-8,4,0,7);g.fill();
+    g.fillStyle='#ffcf5c';for(let k=-2;k<=2;k++){g.beginPath();g.arc(k*r*.35,10,3,0,7);g.fill()}
+  }else if(a.l===2){
+    g.strokeStyle=c1;g.lineWidth=5;for(let k=-2;k<=2;k++){g.beginPath();g.moveTo(k*10,r*.6);g.lineTo(k*14,r*.6+14+Math.sin(t*8+k)*5);g.stroke()}
+    g.fillStyle=c1;g.beginPath();g.arc(0,0,r*.8,0,7);g.fill();
+    g.fillStyle=c0;g.beginPath();g.arc(0,-6,r*.6,0,7);g.fill();
+    [-16,0,16].forEach(ex=>{g.fillStyle='#fff';g.beginPath();g.arc(ex,-10,8,0,7);g.fill();g.fillStyle='#10202a';g.beginPath();g.arc(ex-2,-10,3.5,0,7);g.fill()});
+    g.strokeStyle='#10202a';g.lineWidth=3;g.beginPath();g.arc(0,8,12,.2,Math.PI-.2);g.stroke();
+  }else if(a.l===3){
+    g.fillStyle=c1;g.beginPath();g.ellipse(-r*.2,0,r*1.1,r*.5,0,0,7);g.fill();
+    g.fillStyle=c0;for(let k=0;k<5;k++){g.beginPath();g.moveTo(-r*.8+k*r*.35,-r*.4);g.lineTo(-r*.7+k*r*.35,-r*.4-16);g.lineTo(-r*.6+k*r*.35,-r*.4);g.fill()}
+    g.fillStyle='#b6ff3c';g.beginPath();g.arc(-r*.75,-4,6,0,7);g.fill();
+    g.strokeStyle=c0;g.lineWidth=3;for(let k=0;k<4;k++){g.beginPath();g.moveTo(-r*1.05,6+k*2);g.lineTo(-r*1.2,10+k*5);g.stroke()}
+  }else if(a.l===4){
+    g.fillStyle=c1;g.beginPath();g.arc(0,0,r*.85,0,7);g.fill();
+    g.fillStyle=c0;g.beginPath();g.roundRect?g.roundRect(-r*.6,-r*.5,r*.9,r*1,10):g.rect(-r*.6,-r*.5,r*.9,r);g.fill();
+    g.fillStyle='#ff4d4d';for(let k=0;k<3;k++){g.beginPath();g.arc(-r*.45,-r*.15+k*r*.2,4+(fl?2:0),0,7);g.fill()}
+    g.fillStyle='#ffcf5c';g.fillRect(-r*.55,r*.35,r*.7,5);
+    g.strokeStyle=c0;g.lineWidth=4;g.beginPath();g.moveTo(-r*.3,-r*.8);g.lineTo(-r*.5,-r*1.1);g.moveTo(r*.1,-r*.85);g.lineTo(r*.1,-r*1.15);g.stroke();
+  }else{
+    const w=1+.06*Math.sin(t*3);
+    g.strokeStyle=c1;g.lineWidth=9;g.lineCap='round';
+    for(let k=0;k<10;k++){const an=k/10*6.283+t*.4;g.beginPath();g.moveTo(Math.cos(an)*r*.7,Math.sin(an)*r*.7);
+      g.quadraticCurveTo(Math.cos(an+.5)*r*1.15+Math.sin(t*3+k)*12,Math.sin(an+.5)*r*1.15,Math.cos(an)*r*1.5,Math.sin(an)*r*1.5+Math.sin(t*2+k)*14);g.stroke()}
+    const gr=g.createRadialGradient(-r*.2,-r*.2,r*.1,0,0,r*w);gr.addColorStop(0,fl?'#fff':'#ffd9de');gr.addColorStop(1,c1);
+    g.fillStyle=gr;g.beginPath();for(let k=0;k<=24;k++){const an=k/24*6.283,rr=r*w*(1+.08*Math.sin(an*5+t*2));g[k?'lineTo':'moveTo'](Math.cos(an)*rr,Math.sin(an)*rr)}g.closePath();g.fill();
+    for(let k=0;k<7;k++){const an=k*.9+1,d=r*(.2+.35*((k*37)%10)/10),ex=Math.cos(an)*d,ey=Math.sin(an)*d;
+      g.fillStyle='#fff';g.beginPath();g.arc(ex,ey,9,0,7);g.fill();g.fillStyle='#3a0d1c';g.beginPath();g.arc(ex-3,ey,4,0,7);g.fill()}
+  }
+  g.restore();
+}
+function drawBattle(){
+  if(!battle)return;const b=battle;
+  g.fillStyle='#6ff2c8';b.pb.forEach(p=>g.fillRect(p.x-10,p.y-2,20,4));
+  g.fillStyle='#ff8fb1';b.eb.forEach(e=>{g.beginPath();g.arc(e.x,e.y,8,0,7);g.fill()});
+  drawAlien(b.al,b.x,b.y,b.t,b.flash>0);
+}
+$('fightBtn').onclick=()=>{$('alert').classList.remove('show');const a=curAlert;curAlert=null;startBattle(a);paused=false};
+$('retry').onclick=()=>{$('bad').classList.remove('show');curBad=null;loadSys(sysIdx);paused=false};
+// seeded random for a stable level
+let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+const stars=[...Array(260)].map(()=>({x:rnd()*3000,y:rnd()*2000,z:.1+rnd()*.5,s:rnd()*1.6+.4}));
+let rocks=[],gems=[];
+function build(){
+  rocks=[];gems=[];
+  const xs=[0,...P.map(p=>p.x)];
+  for(let i=0;i<xs.length-1;i++){
+    const a=xs[i]+250,b=xs[i+1]-250;
+    for(let k=0;k<9;k++){
+      const pts=[],n=8,r=18+rnd()*26;
+      for(let j=0;j<n;j++)pts.push(r*(.75+rnd()*.35));
+      rocks.push({x:a+rnd()*(b-a),y:120+rnd()*(WORLD_H-240),r,pts,rot:rnd()*6,vr:(rnd()-.5)*.8,vx:(rnd()-.5)*30,vy:(rnd()-.5)*30});
+    }
+    for(let k=0;k<5;k++)gems.push({x:a+rnd()*(b-a),y:120+rnd()*(WORLD_H-240),on:true});
+  }
+}
+build();
+
+let ship,fuel,hp,inv,paused=true,visited=new Set(),last=null,boost=false,t=0;
+function reset(full){
+  battle=null;alienT=25+Math.random()*30;$('foe').style.display='none';
+  ship={x:last?last.x-last.r-120:START.x,y:last?last.y:START.y,vx:0,vy:0,a:0};
+  fuel=100;hp=3;inv=1.5;
+  if(full){visited=new Set();last=null;ship.x=START.x;ship.y=START.y;gems.forEach(q=>q.on=true)}
+  hud();
+}
+function hud(){
+  $('fuel').style.width=Math.max(0,fuel)+'%';
+  $('hp').textContent='♥'.repeat(Math.max(hp,0))+'♡'.repeat(Math.max(3-hp,0));
+  [...$('track').children].forEach((s,i)=>s.classList.toggle('on',visited.has(i)));
+}
+function buildTrack(){$('track').innerHTML='';P.forEach((p,i)=>{const s=document.createElement('span');s.textContent=pn(i)[0];s.title=pn(i);$('track').appendChild(s)})}
+function loadSys(i){sysIdx=i;P=SYS[i].P;RU=SYS[i].RU;seed=7+i*11;build();buildTrack();reset(true);applyLang()}
+buildTrack();
+let toastT;function toast(m){const e=$('toast');e.textContent=m;e.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('on'),2200)}
+
+// input
+const keys={};let ptr=null;
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key===' ')e.preventDefault()});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+cv.addEventListener('pointerdown',e=>{ptr={x:e.clientX,y:e.clientY}});
+cv.addEventListener('pointermove',e=>{if(ptr)ptr={x:e.clientX,y:e.clientY}});
+addEventListener('pointerup',()=>ptr=null);
+addEventListener('blur',()=>{ptr=null});
+
+$('go').onclick=()=>{$('start').classList.remove('show');reset(true);paused=false;toast(tr('head'))};
+$('cont').onclick=()=>{$('info').classList.remove('show');curInfo=-1;paused=false;
+  if(visited.size===P.length)finish();};
+$('again').onclick=()=>{$('end').classList.remove('show');loadSys(0);paused=false};
+$('next').onclick=()=>{$('end').classList.remove('show');loadSys(1);paused=false;toast(tr('head2'))};
+function finish(){
+  paused=true;const more=sysIdx<SYS.length-1;
+  $('etitle').textContent=tr(more?'endT':'endT2');$('etext').textContent=tr(more?'endX':'endX2');
+  $('next').style.display=more?'':'none';
+  $('end').classList.add('show');
+}
+function showInfo(i){
+  paused=true;curInfo=i;renderInfo(i);
+  $('info').classList.add('show');$('cont').focus();
+}
+
+function update(dt){
+  t+=dt;
+  if(battle){updateBattle(dt);return}
+  alienT-=dt;if(alienT<=0){startAlert();return}
+  let dx=0,dy=0;
+  if(keys['arrowleft']||keys['a'])dx--;if(keys['arrowright']||keys['d'])dx++;
+  if(keys['arrowup']||keys['w'])dy--;if(keys['arrowdown']||keys['s'])dy++;
+  boost=!!keys[' '];
+  if(ptr){const sx=ship.x-cam.x,sy=ship.y-cam.y,ex=ptr.x-sx,ey=ptr.y-sy,d=Math.hypot(ex,ey);if(d>24){dx=ex/d;dy=ey/d}}
+  const m=Math.hypot(dx,dy),moving=m>0&&fuel>0;
+  if(m>1){dx/=m;dy/=m}
+  const sp=moving?(boost?560:320):0;
+  ship.vx+=(dx*sp-ship.vx)*Math.min(1,dt*3);
+  ship.vy+=(dy*sp-ship.vy)*Math.min(1,dt*3);
+  if(moving)fuel-=dt*(boost?5:1.4);
+  if(fuel<=0&&Math.hypot(ship.vx,ship.vy)<12){toast(tr('nofuel'));reset(false);return}
+  ship.x=Math.max(60,Math.min(P[P.length-1].x+600,ship.x+ship.vx*dt));
+  ship.y=Math.max(40,Math.min(WORLD_H-40,ship.y+ship.vy*dt));
+  if(Math.hypot(ship.vx,ship.vy)>20){const ta=Math.atan2(ship.vy,ship.vx);let da=ta-ship.a;da=Math.atan2(Math.sin(da),Math.cos(da));ship.a+=da*Math.min(1,dt*8)}
+  inv=Math.max(0,inv-dt);
+  // planets
+  P.forEach((p,i)=>{
+    if(Math.hypot(ship.x-p.x,ship.y-p.y)<p.r+80){
+      if(!visited.has(i)){visited.add(i);last=p;fuel=100;hud();showInfo(i)}
+    }
+  });
+  // gems
+  gems.forEach(q=>{if(q.on&&Math.hypot(ship.x-q.x,ship.y-q.y)<34){q.on=false;fuel=Math.min(100,fuel+25);toast(tr('plus'))}});
+  // rocks
+  rocks.forEach(r=>{
+    r.x+=r.vx*dt;r.y+=r.vy*dt;r.rot+=r.vr*dt;
+    if(r.y<60||r.y>WORLD_H-60)r.vy*=-1;
+    if(inv<=0&&Math.hypot(ship.x-r.x,ship.y-r.y)<r.r+12){
+      hp--;inv=1.6;
+      const a=Math.atan2(ship.y-r.y,ship.x-r.x);ship.vx=Math.cos(a)*500;ship.vy=Math.sin(a)*500;
+      if(hp<=0){toast(tr('noshield'));reset(false);return}
+      toast(tr('ouch'));
+    }
+  });
+  hud();
+}
+
+const cam={x:0,y:0};
+function draw(){
+  if(battle){cam.x=battle.cx;cam.y=battle.cy}else{cam.x=ship.x-W/2;cam.y=Math.max(0,Math.min(WORLD_H-H,ship.y-H/2));if(WORLD_H<H)cam.y=-(H-WORLD_H)/2}
+  g.fillStyle='#0a0e24';g.fillRect(0,0,W,H);
+  const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#0a0e24');gr.addColorStop(1,SYS[sysIdx].bg);g.fillStyle=gr;g.fillRect(0,0,W,H);
+  stars.forEach(s=>{
+    const x=((s.x-cam.x*s.z)%3000+3000)%3000%(W+50),y=((s.y-cam.y*s.z)%2000+2000)%2000%(H+50);
+    g.globalAlpha=.4+s.z;g.fillStyle='#fff';g.fillRect(x,y,s.s,s.s)});
+  g.globalAlpha=1;
+  g.save();g.translate(-cam.x,-cam.y);
+  // sun
+  const sg=g.createRadialGradient(-120,650,40,-120,650,520);const sc=SYS[sysIdx].sun;sg.addColorStop(0,sc[0]);sg.addColorStop(.25,sc[1]);sg.addColorStop(.6,sc[2]);sg.addColorStop(1,sc[3]);
+  g.fillStyle=sg;g.beginPath();g.arc(-120,650,520,0,7);g.fill();
+  // gems
+  gems.forEach(q=>{if(!q.on)return;g.save();g.translate(q.x,q.y+Math.sin(t*3+q.x)*4);g.rotate(Math.PI/4);
+    g.shadowColor='#6ff2c8';g.shadowBlur=16;g.fillStyle='#6ff2c8';g.fillRect(-9,-9,18,18);g.restore()});
+  // planets
+  P.forEach((p,i)=>{
+    if(p.ring){g.strokeStyle=(p.rc||'#e8d29a');g.lineWidth=12;g.globalAlpha=.55;g.beginPath();g.ellipse(p.x,p.y,p.r*1.9,p.r*.5,-.3,Math.PI,2*Math.PI);g.stroke();g.globalAlpha=1}
+    const pg=g.createRadialGradient(p.x-p.r*.4,p.y-p.r*.4,p.r*.1,p.x,p.y,p.r);pg.addColorStop(0,p.c[0]);pg.addColorStop(1,p.c[1]);
+    g.fillStyle=pg;g.beginPath();g.arc(p.x,p.y,p.r,0,7);g.fill();
+    if(p.n==='Jupiter'||p.n==='Saturn'){g.strokeStyle='#ffffff30';g.lineWidth=6;[-.45,-.1,.3].forEach(k=>{g.beginPath();g.ellipse(p.x,p.y+k*p.r,p.r*Math.sqrt(1-k*k)*.98,2,0,0,7);g.stroke()})}
+    if(p.ring){g.strokeStyle=(p.rc||'#e8d29a');g.lineWidth=12;g.globalAlpha=.8;g.beginPath();g.ellipse(p.x,p.y,p.r*1.9,p.r*.5,-.3,0,Math.PI);g.stroke();g.globalAlpha=1}
+    g.fillStyle=visited.has(i)?'#ffcf5c':'#eef3ff';g.font='600 20px Nunito,system-ui,sans-serif';g.textAlign='center';
+    g.fillText((visited.has(i)?'✓ ':'')+pn(i),p.x,p.y+p.r*(p.ring?.9:1)+34);
+    if(visited.has(i)){g.strokeStyle='#ffcf5c55';g.setLineDash([6,8]);g.lineWidth=2;g.beginPath();g.arc(p.x,p.y,p.r+80,0,7);g.stroke();g.setLineDash([])}
+  });
+  // rocks
+  if(!battle)rocks.forEach(r=>{g.save();g.translate(r.x,r.y);g.rotate(r.rot);g.fillStyle='#7d7a96';g.strokeStyle='#b4b1cf';g.lineWidth=2;g.beginPath();
+    r.pts.forEach((v,j)=>{const a=j/r.pts.length*6.283;g[j?'lineTo':'moveTo'](Math.cos(a)*v,Math.sin(a)*v)});g.closePath();g.fill();g.stroke();g.restore()});
+  // rocket
+  if(!(inv>0&&Math.floor(t*12)%2)){
+    g.save();g.translate(ship.x,ship.y);g.rotate(ship.a);
+    const sp=Math.hypot(ship.vx,ship.vy);
+    if(sp>20){const fl=10+Math.min(sp/12,22)+Math.random()*8;g.fillStyle='#ffcf5c';g.beginPath();g.moveTo(-16,-6);g.lineTo(-16-fl,0);g.lineTo(-16,6);g.fill();g.fillStyle='#ff8fb1';g.beginPath();g.moveTo(-16,-3);g.lineTo(-16-fl*.55,0);g.lineTo(-16,3);g.fill()}
+    g.fillStyle='#eef3ff';g.beginPath();g.moveTo(26,0);g.quadraticCurveTo(10,-14,-16,-10);g.lineTo(-16,10);g.quadraticCurveTo(10,14,26,0);g.fill();
+    g.fillStyle='#ff8fb1';g.beginPath();g.moveTo(-4,-9);g.lineTo(-18,-20);g.lineTo(-16,-8);g.fill();g.beginPath();g.moveTo(-4,9);g.lineTo(-18,20);g.lineTo(-16,8);g.fill();
+    g.fillStyle='#6ff2c8';g.beginPath();g.arc(6,0,5,0,7);g.fill();
+    g.restore();
+  }
+  drawBattle();
+  g.restore();
+  // arrow to next planet
+  const ni=P.findIndex((p,i)=>!visited.has(i));
+  if(ni>=0&&!paused&&!battle){
+    const p=P[ni],sx=p.x-cam.x,sy=p.y-cam.y;
+    if(sx<-p.r||sx>W+p.r||sy<-p.r||sy>H+p.r){
+      const a=Math.atan2(p.y-ship.y,p.x-ship.x),R=Math.min(W,H)*.32;
+      g.save();g.translate(W/2+Math.cos(a)*R,H/2+Math.sin(a)*R);g.rotate(a);g.fillStyle='#ffcf5c';
+      g.beginPath();g.moveTo(16,0);g.lineTo(-8,-11);g.lineTo(-8,11);g.fill();g.restore();
+      g.fillStyle='#ffcf5c';g.font='600 14px Nunito,system-ui,sans-serif';g.textAlign='center';
+      g.fillText(pn(ni),W/2+Math.cos(a)*(R+34),H/2+Math.sin(a)*(R+34)+5);
+    }
+  }
+}
+let prev=performance.now();
+function loop(n){const dt=Math.min((n-prev)/1000,.05);prev=n;if(!paused)update(dt);draw();requestAnimationFrame(loop)}
+applyLang();reset(true);requestAnimationFrame(loop);
+</script>
+</body>
+</html>
